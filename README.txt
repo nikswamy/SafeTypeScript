@@ -27,7 +27,7 @@ Scalable JavaScript development with types, classes and modules.
     - jake -T lists the above commands. 
 
 ## Added by N. Swamy
-## To experiment with the --safe mode, see the Makefile in samples/tsstar, specifically bench safe targets
+## To experiment with the --safe mode, see the Makefile in samples/SafeTypeScript, specifically bench safe targets
 ## To bootstrap the compiler in --safe mode
 
 1. make safe
