@@ -1766,8 +1766,9 @@ module RT {
         if (!o && (o === null || o === undefined)) {
             throw new Error("callFunction0 calling from undefined/null");
         }
-
-        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
+	
+	var t1 = o.__rtti__ || getTag(o);
+        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction0 <call> method not found");
         }
@@ -1786,7 +1787,8 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
+	var t1 = o.__rtti__ || getTag(o);
+        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }
@@ -1814,7 +1816,8 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
+	var t1 = o.__rtti__ || getTag(o);
+        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }
@@ -1858,7 +1861,8 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
+	var t1 = o.__rtti__ || getTag(o);
+        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }

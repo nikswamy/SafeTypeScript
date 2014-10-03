@@ -1,6 +1,6 @@
 // Modified by N.Swamy, A.Rastogi (2014)
 ///<reference path='../../references.ts' />
-///<reference path='tcenv.ts' />
+///<reference path='tcEnv.ts' />
 module TypeScript {
     export module TypeRelations {
         var zero: TcUtil.Delta = undefined;

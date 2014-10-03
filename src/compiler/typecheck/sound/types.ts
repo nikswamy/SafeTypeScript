@@ -1,6 +1,6 @@
 // Modified by N.Swamy, A.Rastogi (2014)
 ///<reference path='../../references.ts' />
-///<reference path='tcutil.ts' />
+///<reference path='tcUtil.ts' />
 /***********************************************************************
  * Defines the abstract syntax of types used in the sound type-checker 
  * All these types derive from the type SoundType defined in ast.ts

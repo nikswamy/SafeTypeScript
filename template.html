@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="octane.css"/>
+</head>
+<body>
+<h2>Bootstrapping SafeTypeScript Compiler</h2>
+<p>
+In this experiment, we bootstrap the Safe TypeScript compiler. We report numbers for bootstrapping using following configs:
+<ol type="a">
+<li>
+<b>Safe</b>: Uses differential tagging scheme, stores RTTI tags with the objects themselves.
+</li>
+<li>
+<b>Safe Optimized</b>: Same as Safe, but with runtime checks inlined.
+</li>
+<li>
+<b>Safe with Weak Maps</b>: Uses differential tagging scheme, stores RTTI tags in a separate Weak Map
+</li>
+<li>
+<b>Safe*</b>: Uses eager RTTI tagging, stores tags with the objects themselves
+</li>
+</ol>
+</p>
+<p></p>
+<p></p>
+<table>
+<caption align="bottom">Time taken to bootstrap the Safe TypeScript compiler.</b>.</caption>
+<tr>
+<th>Configuration</th>
+<th>Time(sec)</th>
+</tr>
+
+include(data.html)
+
+</table>
+
+</body>
+</html>

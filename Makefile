@@ -50,6 +50,14 @@ ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t
 allconfigs: $(CONFIGS)
 benchall: $(CONFIGS) $(addsuffix .boot, $(CONFIGS))
 
+processbm: processbm.js
+	make benchall
+	node $^
+	m4 template.html > bootstrap.html
+
+processbm.js: processbm.ts
+	node ./bin/tsc.js --module commonjs $^
+
 # node-inspeXFctor --web-port=8081 & 
 safe: built/local/lib.d.ts stdrt
 	time node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js > dump.$@ 2>&1
@@ -68,9 +76,9 @@ tsstar: built/local/lib.d.ts stdrt
 
 
 clean: 
-	rm $(addprefix built/local/tsc., $(addsuffix .js, $(CONFIGS)))
-	rm $(addprefix built/local/tsc.boot., $(addsuffix .js, $(CONFIGS)))
-	rm dump*
+	rm -f $(addprefix built/local/tsc., $(addsuffix .js, $(CONFIGS)))
+	rm -f $(addprefix built/local/tsc.boot., $(addsuffix .js, $(CONFIGS)))
+	rm -f dump* processbm.js data.html bootstrap.html
 
 # boot.weak.safer: built/local/lib.d.ts weakrt
 # 	node $(PROFILE) built/local/tsc-weak.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc-weak-safer.js > dump 2>&1
