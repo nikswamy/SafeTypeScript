@@ -1,6 +1,6 @@
 // Modified by N.Swamy (2014)
 ///<reference path='../../references.ts' />
-///<reference path='tcutil.ts' />
+///<reference path='tcUtil.ts' />
 ///<reference path='translateTypes.ts' />
 module TypeScript {
     export enum ScopeType {

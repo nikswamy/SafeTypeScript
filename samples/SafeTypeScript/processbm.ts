@@ -76,13 +76,13 @@ function parseFile(lines:string[]) : Progs {
             runs.push(mkRun(i+4));
         }
     }
-    runs.forEach((r) => console.log(run2str(r)));
+    //runs.forEach((r) => console.log(run2str(r)));
     return progs;
 }
 
 
 
-function getConfig(r:Run[], cfg:Cfg) {
+function getConfig(r:Run[], cfg:Cfg) :Run {
     var c = r.filter((p) => p.config===cfg)[0];
     if (!c) {
         console.log("Could not find config " + cfg2str(cfg) + " for " +r[0].program);
@@ -103,13 +103,74 @@ function timeDiff(r1:Run, r2:Run) : any {
 }
 
 function stats(p:Progs) {
-    for (var prog in p) {
+    /*for (var prog in p) {
         console.log("Program " +prog);
         console.log("\t Safe  (wrt Raw): " +timeDiff(getConfig(p[prog], Cfg.RAW), getConfig(p[prog], Cfg.SAFE)));
         console.log("\t Opt  (wrt Safe): " +timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.OPT)));
         console.log("\t Weak (wrt Safe): " +timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.WEAK)));
         console.log("\t TS*  (wrt Safe): " +timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.TSSTAR)));
+    }*/
+    var x = new StringBuilder("");
+    for (var prog in p) {
+	x.add("<tr>");
+	x.add("<td>").add(prog.split(".")[1]).add("</td>");
+        x.add("<td>").add(timeDiff(getConfig(p[prog], Cfg.RAW), getConfig(p[prog], Cfg.SAFE)).toString()).add("</td>");
+        x.add("<td>").add(timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.OPT)).toString()).add("</td>");
+        x.add("<td>").add(timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.WEAK)).toString()).add("</td>");
+        x.add("<td>").add(timeDiff(getConfig(p[prog], Cfg.SAFE), getConfig(p[prog], Cfg.TSSTAR)).toString()).add("</td>");
+	x.add("</tr>");
+    }
+    return x.get();
+}
+
+class StringBuilder
+{
+    value: string;
+
+    constructor(init: string) {
+	this.value = init;	
+    }
+
+    add(s: string) :StringBuilder {
+	this.value += "\n" + s;
+	return this;
+    }
+
+    get() :string {
+	return this.value;
     }
 }
 
-stats(parseFile(lines));
+function html_data(progs: Progs) :string
+{
+    var x = new StringBuilder("");
+
+    for(var name in progs) {
+	var prog = progs[name];
+	var def = getConfig(prog, Cfg.RAW);
+	var safe = getConfig(prog, Cfg.SAFE);
+	var opt = getConfig(prog, Cfg.OPT);
+	var weak = getConfig(prog, Cfg.WEAK);
+	var tsstar = getConfig(prog, Cfg.TSSTAR);
+
+	x.add("<tr>");
+	x.add("<td>").add(name.split(".")[1]).add("</td>");
+	x.add("<td>").add(def.time.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(def.moe.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(safe.time.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(safe.moe.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(opt.time.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(opt.moe.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(weak.time.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(weak.moe.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(tsstar.time.toPrecision(3).toString()).add("</td>");
+	x.add("<td>").add(tsstar.moe.toPrecision(3).toString()).add("</td>");
+	x.add("</tr>");
+    }
+
+    return x.get();
+}
+
+var progs = parseFile(lines);
+fs.writeFileSync("data.html", html_data(progs));
+fs.writeFileSync("slowdowns.html", stats(progs));

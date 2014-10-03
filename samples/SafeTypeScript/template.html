@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="octane.css"/>
+</head>
+<body>
+<h2>Octane benchmarks</h2>
+<h4>Raw numbers</h4>
+<p>
+The experiment compares 5 configurations per benchmark:
+<ol type="a">
+<li>
+<b>Default</b>: Plain TypeScript compiler output
+</li>
+<li>
+<b>Safe</b>: Safe TypeScript compiler output (with instrumented runtime checks)
+</li>
+<li>
+<b>Safe Optimized</b>: Safe TypeScript compiler output, uses inlined runtime checks
+</li>
+<li>
+<b>Weak Map</b>: Safe TypeScript compiler output, uses a separate Weak Map to maintain RTTI tags
+</li>
+<li>
+<b>TS*</b>: Safe TypeScript compiler output, uses an eager tagging strategy
+</li>
+</ol>
+For each benchmark, we report arithmetic mean and margin of error for both typed and untyped versions of the benchmark. All times are in seconds.
+</p>
+<p></p>
+<p></p>
+<table>
+<caption align="bottom">Running times for Octance benchmarks. All times are in <b>seconds</b>.</caption>
+<tr>
+<th></th>
+<th colspan="2">Default</th>
+<th colspan="2">Safe</th>
+<th colspan="2">Safe Optimized</th>
+<th colspan="2">Weak Map</th>
+<th solspan="2">TS*</th>
+</tr>
+<tr>
+<td></td>
+<th>Mean</th><th>MOE</th>
+<th>Mean</th><th>MOE</th>
+<th>Mean</th><th>MOE</th>
+<th>Mean</th><th>MOE</th>
+<th>Mean</th><th>MOE</th>
+</tr>
+
+include(data.html)
+
+</table>
+
+<p></p><p></p>
+<h4>Comparative slowdowns</h4>
+
+<p>Following table shows the percentage slowdowns of each configuration.</p>
+
+<table>
+<caption align="bottom">Slowdown for each configuration. Negative numbers indicate speedups.</caption>
+<tr>
+<th></th>
+<th>Safe (w.r.t. Default)</th>
+<th>Safe Optimized (w.r.t. Safe)</th>
+<th>Weak Map (w.r.t. Safe)</th>
+<th>TS* (w.r.t. Safe)</th>
+</tr>
+
+include(slowdowns.html)
+
+</table>
+
+</body>
+</html>

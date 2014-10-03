@@ -1,13 +1,17 @@
-SAMPLES=richards.ts richards_typed.ts splay.ts splayTyped.ts raytrace.ts raytraceTyped.ts navier-stokes.ts navier-stokes-typed.ts crypto.ts cryptoTyped.ts
-BENCHMARKS=splay splayTyped splayTypedStruct navier-stokes navier-stokes-typed richards richards_typed raytrace raytraceTyped crypto cryptoTyped
+SAMPLES=richards.ts richards-typed.ts splay.ts splay-typed.ts raytrace.ts raytrace-typed.ts navier-stokes.ts navier-stokes-typed.ts crypto.ts crypto-typed.ts
+BENCHMARKS=splay splay-typed navier-stokes navier-stokes-typed richards richards-typed raytrace raytrace-typed crypto crypto-typed
 
-benchall: clean $(addsuffix .bench.js, $(BENCHMARKS)) $(addsuffix .benchsafe.js, $(BENCHMARKS)) $(addsuffix .benchsafeopt.js, $(BENCHMARKS)) $(addsuffix .benchweak.js, $(BENCHMARKS)) $(addsuffix .benchtsstar.js, $(BENCHMARKS))
+#splayTypedStruct
+
+benchall: $(addsuffix .bench.js, $(BENCHMARKS)) $(addsuffix .benchsafe.js, $(BENCHMARKS)) $(addsuffix .benchsafeopt.js, $(BENCHMARKS)) $(addsuffix .benchweak.js, $(BENCHMARKS)) $(addsuffix .benchtsstar.js, $(BENCHMARKS))
 
 processbm: processbm.js
-	node $^
+	@make benchall > octanebench 2>&1
+	@node $^
+	@m4 template.html > octane.html
 
 processbm.js: processbm.ts
-	tsc --module commonjs $^
+	@node ../../bin/tsc.js --module commonjs $^
 
 wc: 
 	wc -l $(SAMPLES)
@@ -19,11 +23,11 @@ playground:
 bm: jsonparser richards splay raytrace
 	node run-octane.js
 
-raytrace: raytrace.raw.js raytrace.safe.js raytraceTyped.safe.js
+raytrace: raytrace.raw.js raytrace.safe.js raytrace-typed.safe.js
 
-splay: splay.raw.js splay.safe.js splayTyped.safe.js
+splay: splay.raw.js splay.safe.js splay-typed.safe.js
 
-richards: richards.raw.js richards.safe.js richards_typed.raw.js richards_typed.raw.js richards_typed.safe.js
+richards: richards.raw.js richards.safe.js richards-typed.raw.js richards-typed.raw.js richards-typed.safe.js
 
 jsonparser: jsonparser.raw.js jsonparser.safe.js jsonparser.sec.js 
 
@@ -71,8 +75,8 @@ SAFEMODE_FLAGS=--relaxNullChecks --nowarn 7051 --nowarn 7083  --nowarn 7047 --no
 %.js: %.ts ../../built/local/tsc.js ../../built/local/lib.d.ts rtapi.ts stdrt
 	node $(PROFILE) ../../built/local/tsc.js $(OTHERFLAGS) -t ES5 -propagateEnumConstants --module commonjs --out $@ $<
 
-%.safe.js: %.ts ../../built/local/tsc.safe.js ../../built/local/lib.d.ts rtapi.ts stdrt
-	node $(PROFILE) ../../built/local/tsc.safe.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) -t ES5 -propagateEnumConstants --module commonjs --out $@ $<
+%.safe.js: %.ts ../../built/local/tsc.js ../../built/local/lib.d.ts rtapi.ts stdrt
+	node $(PROFILE) ../../built/local/tsc.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) -t ES5 -propagateEnumConstants --module commonjs --out $@ $<
 
 %.safeopt.js: %.ts ../../built/local/tsc.js ../../built/local/lib.d.ts rtapi.ts stdrt
 	node $(PROFILE) ../../built/local/tsc.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --optimizePure -t ES5 -propagateEnumConstants --module commonjs --out $@ $<
@@ -133,7 +137,7 @@ prof: ../../built/local/tsc-safe.js ../../built/local/lib.d.ts rtapi.ts rt.ts
 	node benchmark.$<
 
 profile-safe: 
-	node --prof ../../built/local/tsc.js $(OTHERFLAGS) --nowarn 7081 --knownWarnings triage --generics --safe --noRuntimeChecks -t ES5 -removeComments -propagateEnumConstants --module commonjs id.ts micro.ts classes.ts jsonparser.ts richards_typed.ts splayTyped.ts raytraceTyped.ts navier-stokes-typed.ts deltablueTyped.ts cryptoTyped.ts
+	node --prof ../../built/local/tsc.js $(OTHERFLAGS) --nowarn 7081 --knownWarnings triage --generics --safe --noRuntimeChecks -t ES5 -removeComments -propagateEnumConstants --module commonjs id.ts micro.ts classes.ts jsonparser.ts richards-typed.ts splay-typed.ts raytrace-typed.ts navier-stokes-typed.ts crypto-typed.ts
 
 mylib:
 	node ../../built/local/tsc.js --noLib --safe --noRuntimeChecks -t ES5 -noImplicitAny -removeComments -propagateEnumConstants --module commonjs mylib.d.ts
@@ -142,5 +146,4 @@ mylib:
 	echo "/* no test yet */" > $@
 
 clean:
-	rm -f *.raw.js *.sec.js *.safe.js *.safer.js benchmark.*.js benchmark.*.safe.js benchmark.*.safeopt.js benchmark.*.weak.js benchmark.*.tsstar.js $(addsuffix .js, $(BENCHMARKS)) *~
-
+	rm -f *.raw.js *.sec.js *.safe.js *.safer.js benchmark.*.js benchmark.*.safe.js benchmark.*.safeopt.js benchmark.*.weak.js benchmark.*.tsstar.js rt.ts rtapi.ts data.html slowdowns.html octane.html octanebench processbm.js $(addsuffix .js, $(BENCHMARKS)) *~
