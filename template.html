@@ -22,6 +22,9 @@ In this experiment, we bootstrap the Safe TypeScript compiler. We report numbers
 <b>Safe*</b>: Uses eager RTTI tagging, stores tags with the objects themselves
 </li>
 </ol>
+
+The numbers in parentheses are overheads. For configurations Safe, the overhead is over Plain. For all other configurations, the overhead is over Safe.
+
 </p>
 <p></p>
 <p></p>
@@ -33,6 +36,23 @@ In this experiment, we bootstrap the Safe TypeScript compiler. We report numbers
 </tr>
 
 include(data.html)
+
+</table>
+
+<h2>TypeChecking TypeScript Compiler v1.1</h2>
+<p>
+In this experiment, we typecheck v1.1 of the TypeScript compiler.
+</p>
+<p></p>
+<p></p>
+<table>
+<caption align="bottom">Time taken to typecheck TypeScript compiler v1.1.</b>.</caption>
+<tr>
+<th>Configuration</th>
+<th>Time(sec)</th>
+</tr>
+
+include(newtsdata.html)
 
 </table>
 

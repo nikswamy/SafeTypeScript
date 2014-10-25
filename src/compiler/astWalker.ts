@@ -225,7 +225,7 @@ module TypeScript {
         walker.walk(preAst.block);
     }
 
-    function walkConstructorTypeChildren(ast: AST, walker: AstWalker): void { var preAst = <FunctionType>ast;
+    function walkConstructorTypeChildren(ast: AST, walker: AstWalker): void { var preAst = <ConstructorType>ast;
         walker.walk(preAst.typeParameterList);
         walker.walk(preAst.parameterList);
         walker.walk(preAst.type);

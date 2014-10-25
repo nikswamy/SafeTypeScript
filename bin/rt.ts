@@ -1,21 +1,7 @@
-// Modified by N.Swamy, A.Rastogi (2014)
-
+// Modified by N.Swamy (2014)
 ///<reference path='rtapi.ts'/>
 
 module RT {
-    declare var require: (m: string) => any;
-    var WeakMap = require('weak-map');
-    var tagHeap = new WeakMap();
-    export var getRtti = (o: any) => {
-        return o.__rtti__ || tagHeap.get(o);
-    };
-    var getTag = (o: any) => {
-        return tagHeap.get(o);
-    };
-
-    export var setRtti = (o: any, t: any) => {
-        tagHeap.set(o, t);
-    }; 
     ////////////////////////////////////////////////////////////////////////////
     // Some utilities
     ////////////////////////////////////////////////////////////////////////////
@@ -52,7 +38,9 @@ module RT {
         CLASS,
         INDEX_MAP,
         STRUCTURED_TYPE,
-        JUST_TYPE
+        JUST_TYPE,
+        UN,
+        CLOSED_TYPE
     }
     //The base interface for the representation of all runtime types
     export interface RTTI extends Virtual {
@@ -73,6 +61,10 @@ module RT {
     }
     //Named types have no immediate structure
     //Their structure is maintained in a separate "registry" 
+    export interface LookupTable {
+        [name: string]: boolean;
+    }
+
     export interface NamedType extends RTTI {
         name: string;
         structuredType: StructuredType;
@@ -84,6 +76,9 @@ module RT {
         constr?: ArrowType;
     }
     export interface JustType extends RTTI {
+        base: RTTI;
+    }
+    export interface ClosedType extends RTTI {
         base: RTTI;
     }
     export interface InstanceType extends NamedType { }
@@ -150,6 +145,8 @@ module RT {
             return "zero";
         }
         switch (t.tt) {
+            case TT.UN:
+                return "Un";
             case TT.ANY:
                 return "any";
             case TT.ARRAY:
@@ -166,6 +163,8 @@ module RT {
                 return (<InterfaceType> t).name;
             case TT.JUST_TYPE:
                 return "dot " + prettyprint_t((<JustType> t).base);
+            case TT.CLOSED_TYPE:
+                return "closed " + prettyprint_t((<ClosedType> t).base);
             case TT.NUMBER:
                 return "number";
             case TT.STRING:
@@ -274,6 +273,10 @@ module RT {
             named_type.structuredType = StructuredType(repr.methods, repr.fields);
             named_type.structuredType.immutable = true;
 
+            //named_type.extendsList = {};
+            //(<any> named_type.extendsList).__proto__ = null;
+
+            //repr.extendsList.forEach(s => named_type.extendsList[s] = true);
             named_type.extendsList = repr.extendsList;
 
             if (repr.kind === TT.CLASS) {
@@ -303,6 +306,12 @@ module RT {
     var emptyFieldTable: FieldTable = RT.createEmptyMap<RTTI>();
 
     var emptyMethodTable: MethodTable = RT.createEmptyMap<ArrowType>();
+
+    export var Un: RTTI = {
+        tt: TT.UN,
+        fieldTable: emptyFieldTable,
+        methodTable: emptyMethodTable
+    };
 
     export var Any: RTTI = {
         tt: TT.ANY,
@@ -334,8 +343,9 @@ module RT {
     _ = (<any> Number.prototype).__rtti__  = Num;
     _ = (<any> Boolean.prototype).__rtti__ = Bool;
     _ = (<any> String.prototype).__rtti__  = Str;
-//    _ = (<any> Object.prototype).__rtti__  = Any; /* Functions and Arrays inherit __rtti__ from Object.prototype, Object.create(..) may not */
+    _ = (<any> Object.prototype).__rtti__  = Any; /* Functions and Arrays inherit __rtti__ from Object.prototype, Object.create(..) may not */
                                                  
+    //TODO: freeze these prototypes
 
     var namedTypesCache: { [name: string]: NamedType } = {};
     function getNamedType(name: string, tt: TT): NamedType {
@@ -363,6 +373,9 @@ module RT {
     }
     export function JustType(t: RTTI): JustType {
         return { tt: TT.JUST_TYPE, base: t, fieldTable: emptyFieldTable, methodTable: emptyMethodTable };
+    }
+    export function ClosedType(t: RTTI): ClosedType {
+        return { tt: TT.CLOSED_TYPE, base: t, fieldTable: emptyFieldTable, methodTable: emptyMethodTable };
     }
     export function IndexMapType(key: RTTI, value: RTTI): IndexMapType {
         return { tt: TT.INDEX_MAP, key: key, value: value, fieldTable: emptyFieldTable, methodTable: emptyMethodTable };
@@ -433,7 +446,7 @@ module RT {
         return (namedTypeRelationRegistry[s] ? { fst: true, snd: namedTypeRelationRegistry[s] } : { fst: false, snd: zero });
     }
 
-    function subtype(t1: RTTI, t2: RTTI, cxt: NamedContext): Pair<boolean, Delta> {
+    function subtype(t1: RTTI, t2: RTTI, cxt: NamedContext, nominal?: boolean): Pair<boolean, Delta> {
         var sub: Pair<boolean, Delta>;
 
         if (t1 === t2) {
@@ -472,6 +485,7 @@ module RT {
                     case TT.INTERFACE:
                         // in extends list
                         if ((<NamedType> t1).extendsList.indexOf((<NamedType> t2).name) !== -1) {
+                        //if ((<NamedType> t1).extendsList[(<NamedType> t2).name]) {
                             return { fst: true, snd: t1 };
                         }
                         // in relation registry
@@ -482,16 +496,20 @@ module RT {
                         if (inContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE)) {
                             return { fst: true, snd: zero };
                         }
-                        if (equalTypes(t1, t2, cxt)) {
+                        if (equalTypes(t1, t2, cxt, nominal)) {
                             return { fst: true, snd: zero };
                         }
-                        // extend context and recur
-                        sub = subtype((<NamedType> t1).structuredType, (<NamedType> t2).structuredType,
-                            extendContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE));
-                        if (sub.fst) {
-                            addToNamedTypeRelationRegistry(<NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE, sub.snd);
+                        if (nominal) {
+                            return { fst: false, snd: zero };
+                        } else {
+                            // extend context and recur
+                            sub = subtype((<NamedType> t1).structuredType, (<NamedType> t2).structuredType,
+                                extendContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE));
+                            if (sub.fst) {
+                                addToNamedTypeRelationRegistry(<NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE, sub.snd);
+                            }
+                            return sub;
                         }
-                        return sub;
                     case TT.STRUCTURED_TYPE:
                         return subtype(t1, (<NamedType> t2).structuredType, cxt);
                     case TT.INSTANCE:
@@ -585,7 +603,7 @@ module RT {
             case TT.JUST_TYPE:
                 return { fst: subtype(t1.tt === TT.JUST_TYPE ? (<JustType> t1).base : t1, (<JustType> t2).base, cxt).fst, snd: zero };
             default:
-
+                //falls off
         }
         
         //s-primdot TODO: this is not inc. right now
@@ -659,7 +677,7 @@ module RT {
     }
 
     // if t1 = t2 = undefined, it returns true --> some code relies on this fact
-    function equalTypes(t1: RTTI, t2: RTTI, cxt: NamedContext): boolean {
+    function equalTypes(t1: RTTI, t2: RTTI, cxt: NamedContext, nominal?: boolean): boolean {
         var eqflds = function (flds1: FieldTable, flds2: FieldTable) {
             for (var f in flds1) {
                 if (!flds2[f]) {
@@ -717,14 +735,18 @@ module RT {
                 }
                 // we know t1 is an interface, and since t1.tt === t2.tt, so is t2
                 //var b = equalTypes(toStructuredType(t1), toStructuredType(t2), extendContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.EQUALITY));
-                var b = equalTypes((<NamedType> t1).structuredType, (<NamedType> t2).structuredType,
-                    extendContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.EQUALITY));
-                if (b) {
-                    addToNamedTypeRelationRegistry(<NamedType> t1, <NamedType> t2, NameRelation.EQUALITY, zero);
+                if (nominal) {
+                    return false;
+                } else {
+                    var b = equalTypes((<NamedType> t1).structuredType, (<NamedType> t2).structuredType,
+                        extendContext(cxt, <NamedType> t1, <NamedType> t2, NameRelation.EQUALITY));
+                    if (b) {
+                        addToNamedTypeRelationRegistry(<NamedType> t1, <NamedType> t2, NameRelation.EQUALITY, zero);
+                    }
+                    return b;
                 }
-                return b;
             case TT.INDEX_MAP:
-                return equalTypes((<IndexMapType> t1).key, (<IndexMapType> t1).key, cxt) && equalTypes((<IndexMapType> t1).value, (<IndexMapType> t1).value, cxt);
+                return equalTypes((<IndexMapType> t1).key, (<IndexMapType> t2).key, cxt) && equalTypes((<IndexMapType> t1).value, (<IndexMapType> t2).value, cxt);
             case TT.JUST_TYPE:
                 return equalTypes((<JustType> t1).base, (<JustType> t2).base, cxt);
             case TT.STRUCTURED_TYPE:
@@ -756,6 +778,12 @@ module RT {
             key = keys[i];
             new_methods[key] = t.methodTable[key];
         }
+        /*for (var f in t.fieldTable) {
+            new_flds[f] = t.fieldTable[f];
+        }
+        for (var m in t.methodTable) {
+            new_methods[m] = t.methodTable[m];
+        }*/
         return StructuredType(new_methods, new_flds);
     }
 
@@ -791,6 +819,8 @@ module RT {
                         }
                         // in extends list
                         if ((<NamedType> t1).extendsList.indexOf((<NamedType> t2).name) !== -1) {
+                        //if ((<NamedType> t1).extendsList[(<NamedType> t2).name]) {
+
                             return t1;
                         }
                         //TODO: can this ever happen ?
@@ -801,6 +831,10 @@ module RT {
                         if ((sub = inNamedTypeRelationRegistry(<NamedType> t1, <NamedType> t2, NameRelation.SUBTYPE)) && sub.fst) {
                             return t1;
                         }
+                        /*if ((sub = inNamedTypeRelationRegistry(<NamedType> t2, <NamedType> t1, NameRelation.SUBTYPE)) && sub.fst) {
+                            return t2;
+                        }*/
+                        //return combine(toStructuredType(t1), toStructuredType(t2));
                         return combine((<NamedType> t1).structuredType, (<NamedType> t2).structuredType);
                     case TT.STRUCTURED_TYPE:
                         //return combine(t1, toStructuredType(t2));
@@ -812,6 +846,25 @@ module RT {
                     case TT.STRING:
                         //assert((<NamedType> t2).name === "String", "string can only be combined with strings");
                         return t1;
+                    case TT.CLOSED_TYPE:
+                        var t3 = (<ClosedType> t1).base;
+                        if ((<InterfaceType> t3).name === (<InterfaceType> t2).name) {
+                            return t1;
+                        }
+
+                        if ((<InterfaceType> t3).extendsList.indexOf((<InterfaceType> t2).name) !== -1) {
+                        //if ((<InterfaceType> t3).extendsList[(<InterfaceType> t2).name]) {
+
+                            return t1;
+                        }
+
+                        if ((<InterfaceType> t2).extendsList.indexOf((<InterfaceType> t3).name) !== -1) {
+                        //if ((<InterfaceType> t2).extendsList[(<InterfaceType> t3).name]) {
+
+                            return ClosedType(t2);
+                        }
+
+                        throw new Error("combine invariants not held");
                     //case TT.BOOLEAN:
                     //case TT.NUMBER:
                     //case TT.ARRAY:
@@ -917,15 +970,15 @@ module RT {
                 //t_o = o.__rtti__ || Any;
                 //assert(t_o === Any || equalTypes(t_o, t, {}), "shallowTag on array and index map assumes no or same RTTI");
                 //(t_o  !== Any) || (o.__rtti__ = t);
-                setRtti(o, t);
+                o.__rtti__ = t;
                 return o;
             case TT.INTERFACE:
             case TT.STRUCTURED_TYPE:
-                t_o = o.__rtti__ || getTag(o) || Any;
+                t_o = o.__rtti__ || Any;
                 if (t_o.tt === TT.INSTANCE || t_o.tt === TT.INTERFACE) { // for class types, no change of tag
                     return o;
                 }
-                setRtti(o, combine(t_o, t));
+                o.__rtti__ = combine(t_o, t);
                 return o;
             //case TT.JUST_TYPE:
                 //assert(false, "shallowTag with Just types not defined");
@@ -940,7 +993,7 @@ module RT {
         if (v === undefined || v === null) {
             return { fst: true, snd: v };
         }
-        var t_v = v.__rtti__ || getTag(v) || Any;
+        var t_v = v.__rtti__ || Any;
         if ((<any> t_v).name == to.name) {
             return { fst: true, snd: v };
         }
@@ -954,9 +1007,24 @@ module RT {
         if (v === undefined || v === null) { // setTag(T, undefined, _, _)
             return v;
         }
-        var t_v = v.__rtti__ || getTag(v) || Any;
+        var t_v = v.__rtti__ || Any;
 
-        if (from.tt === TT.JUST_TYPE) {
+        if (from.tt === TT.JUST_TYPE || from.tt === TT.UN) {
+            throw new Error("checkAndTag from dot or un");
+        }
+
+        if (t_v.tt === TT.CLOSED_TYPE) {
+            if (subtype(to, (<ClosedType> t_v).base, {}, true).fst) {
+                v.__rtti__ = ClosedType(to);
+                return v;
+            } else if (subtype((<ClosedType> t_v).base, to, {}, true)) {
+                return v;
+            } else {
+                throw new Error("closed type checkAndTag to something not subtype");
+            }
+        }
+
+        /*if (from.tt === TT.JUST_TYPE) {
             if (t_v.tt === TT.STRUCTURED_TYPE) {
                 t_v = clone(<StructuredType> t_v);
             }
@@ -964,8 +1032,8 @@ module RT {
                 throw new Error("checkAndTag from dotted type subtyping failure: " + prettyprint_t(JustType(combine(t_v, (<JustType> from).base))) +
                     " </: " + prettyprint_t(to));
             }
-            return v; // setTag(T, v, dot base, to)
-        }
+            return v;
+        }*/
         // undotted from
         switch (to.tt) {
             case TT.BOOLEAN:
@@ -998,7 +1066,7 @@ module RT {
                 }
                 return v;
             case TT.INTERFACE:
-                switch (t_v.tt) {
+                switch (t_v.tt) {                        
                     // optimize just for instances and interfaces
                     case TT.INSTANCE:
                         if (!(isZeroSubtype(t_v, to))) {
@@ -1012,6 +1080,7 @@ module RT {
                         }
                         // in extends list
                         if ((<NamedType> t_v).extendsList.indexOf((<NamedType> to).name) !== -1) {
+                        //if ((<NamedType> t_v).extendsList[(<NamedType> to).name]) {
                             return v;
                         }
                         //TODO: can this ever happen ?
@@ -1058,10 +1127,10 @@ module RT {
                 sub = subtype(curr, StructuredType(to.methodTable, overlapping_flds), {});
                 if (!(sub.fst)) {
                     throw new Error("checkAndTag to structured type subtyping from combine failure: " + prettyprint_t(curr) + " </: " +
-                        StructuredType((<StructuredType> to).methodTable, overlapping_flds));
+                        prettyprint_t(StructuredType((<StructuredType> to).methodTable, overlapping_flds)));
                 }
                 shallowTag(v, sub.snd);
-                setRtti(v, combine((v.__rtti__ || getTag(v) || Any) /* t_v is stale at this point */, StructuredType({}, new_flds))); // add new_flds in RTTI tentatively
+                v.__rtti__ = combine((v.__rtti__ || Any) /* t_v is stale at this point */, StructuredType({}, new_flds)); // add new_flds in RTTI tentatively
                 for (f in new_flds) { // go deep
                     checkAndTag(v[f], Any, new_flds[f]);
                 }
@@ -1069,7 +1138,7 @@ module RT {
             case TT.JUST_TYPE:
                 return checkAndTag(v, from, (<JustType> to).base);
             default:
-                throw new Error("Impossible"); // never reach here
+                throw new Error("Impossible"); // handles Un
         }
     }
 
@@ -1082,7 +1151,7 @@ module RT {
             return t;
         } else {
             //t is undefined, if o is an index map, need to return the elt type
-            t = o.__rtti__ || getTag(o);
+            t = o.__rtti__;
             if (t.tt === TT.INDEX_MAP) {
                 if ((<IndexMapType> t).key.tt === TT.NUMBER) {
                     throw new Error("readFieldOptim index map index is number");
@@ -1106,7 +1175,7 @@ module RT {
             throw new Error("readField reading from undefined/null");
         }
 
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         var tt: TT = t_o.tt;
         var t = tt === TT.ANY ? from : t_o;
 
@@ -1127,8 +1196,8 @@ module RT {
                         throw new Error("readField reading method (instance and interface)");
                     }
                     t1 = Any;
-                } else if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("readField from interface / instance reading dot type field");
+                } else if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("readField from interface / instance reading dot type/un field");
                 }
                 return shallowTag(o[fname], t1);
             case TT.STRING:
@@ -1142,8 +1211,8 @@ module RT {
                     return (<any> o).length;
                 }
                 t1 = (<ArrayType> t).elt;
-                if (t1.tt === TT.JUST_TYPE) { 
-                    throw new Error("array readField elt type is dotted: " + prettyprint_t(t1));
+                if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) { 
+                    throw new Error("array readField elt type is dotted/un: " + prettyprint_t(t1));
                 }
                 return shallowTag(o[<number> checkAndTag(f, Any, Num)], t1);
             case TT.STRUCTURED_TYPE:
@@ -1153,8 +1222,8 @@ module RT {
                         throw new Error("readField struct types reading method");
                     }
                     t1 = Any;
-                } else if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("readField from struct reading dot type field");
+                } else if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("readField from struct reading dot/un type field");
                 }
                 return shallowTag(o[fname], t1);
             case TT.ANY:
@@ -1162,7 +1231,7 @@ module RT {
             case TT.INDEX_MAP:
                 tt = (<IndexMapType> t).key.tt;
                 t1 = (<IndexMapType> t).value;
-                if (t1.tt === TT.JUST_TYPE) {
+                if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
                     throw new Error("indexMap readField value type not a subtype of any: " + prettyprint_t(t1));
                 }
                 if (tt === TT.NUMBER) {
@@ -1183,7 +1252,7 @@ module RT {
             throw new Error("writeField writing to undefined/null");
         }
 
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         var tt: TT = t_o.tt;
         var t = tt === TT.ANY ? from : t_o;
 
@@ -1204,9 +1273,9 @@ module RT {
                         throw new Error("writeField writing method (instance and interface)");
                     }
                     t1 = Any;
-                    //TODO: no need to checkAndTag here as tv is undotted ... confirm
-                } else if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("readField from interface / instance reading dot type field");
+                    //TODO: no need to checkAndTag here as tv is undotted, not un ... confirm
+                } else if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("readField from interface / instance reading dot/un type field");
                 } else {
                     v = checkAndTag(v, tv, t1);
                 }
@@ -1215,12 +1284,12 @@ module RT {
                 if (fname === "length") {
                     return ((<any> o).length = v);
                 }
-                if (f === undefined || f === null || ((f.__rtti__ || getTag(f)) !== Num)) {
+                if (f === undefined || f === null || f.__rtti__ !== Num) {
                     throw new Error("array writeField f can only be Num");
                 }
                 t1 = (<ArrayType> t).elt;
-                if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("array writeField elt type is dotted: " + prettyprint_t(t1));
+                if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("array writeField elt type is dotted/un: " + prettyprint_t(t1));
                 } else {
                     v = checkAndTag(v, tv, t1);
                 }
@@ -1232,9 +1301,9 @@ module RT {
                         throw new Error("writeField struct types writing method");
                     }
                     t1 = Any;
-                    //TODO: no need to checkAndTag here as tv is undotted ... confirm
-                } else if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("writeField from struct writing dot type field");
+                    //TODO: no need to checkAndTag here as tv is undotted/not un ... confirm
+                } else if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("writeField from struct writing dot/un type field");
                 } else {
                     v = checkAndTag(v, tv, t1);
                 }
@@ -1244,13 +1313,13 @@ module RT {
             case TT.INDEX_MAP:
                 tt = (<IndexMapType> t).key.tt;
                 t1 = (<IndexMapType> t).value;
-                if (t1.tt === TT.JUST_TYPE) {
-                    throw new Error("indexMap writeField value type is dotted: " + prettyprint_t(t1));
+                if (t1.tt === TT.JUST_TYPE || t1.tt === TT.UN) {
+                    throw new Error("indexMap writeField value type is dotted/un: " + prettyprint_t(t1));
                 } else {
                     v = checkAndTag(v, tv, t1);
                 }
                 if (tt === TT.NUMBER) {
-                    if (f === undefined || f === null || (f.__rtti__ || getTag(f) !== Num)) {
+                    if (f === undefined || f === null || f.__rtti__ !== Num) {
                         throw new Error("Indexmap writeField number index error");
                     }
                     return (o[f] = v);
@@ -1268,7 +1337,7 @@ module RT {
         if (!o && (o === null || o === undefined)) {
             throw new Error("resolveMethod for undefined/null");
         }
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         return t_o.methodTable[mname] || objectMethods[mname] || from.methodTable[mname];
     }
 
@@ -1282,7 +1351,7 @@ module RT {
         }
 
         //var undotted_from = from.tt === TT.JUST_TYPE ? (<JustType> from).base : from; // first strip dot from static type 
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         // this variable checks for String, Array, and IndexMap, which have the property that either tag or static type is most precise
         var t = /*undotted_*/from.tt === TT.ANY ? t_o : /*undotted_*/from; // take the more precise one of tag and static
 
@@ -1292,7 +1361,7 @@ module RT {
         if (t1 === undefined) {
             return callFunction(readField(o, from, m), Any /* readField gives type Any */, args, argTypes);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
         //var sub = subtype(t1.result, Any, {});
         //if (!(sub.fst)) {
             throw new Error("callMethod return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1357,7 +1426,7 @@ module RT {
         if (t1 === undefined) {
             return checkFunctionArgs(readField(o, from, m), args, argTypes);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("checkMethodArgs return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1388,7 +1457,7 @@ module RT {
         if (t1 === undefined) {
             return checkFunctionArgs0(readField(o, from, m));
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("checkMethodArgs0 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1402,7 +1471,7 @@ module RT {
         if (t1 === undefined) {
             return checkFunctionArgs1(readField(o, from, m), arg1, argType1);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("checkMethodArgs1 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1426,7 +1495,7 @@ module RT {
             //TODO: readField is reading from m, which means stateful toString on m might fail
             return checkFunctionArgs2(readField(o, from, m), arg1, arg2, argType1, argType2);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("checkMethodArgs2 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1479,12 +1548,12 @@ module RT {
         if (!o && (o === null || o === undefined)) {
             throw new Error("checkFunctionArgs calling from undefined/null");
         }
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         var t1 = t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("checkFunctionArgs <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("checkFunctionArgs return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1542,7 +1611,7 @@ module RT {
             //TODO: readField is reading from m, which means stateful toString on m might fail
             return callFunction0(readField(o, from, m), Any /* readField gives type Any */);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             //var sub = subtype(t1.result, Any, {});
             //if (!(sub.fst)) {
             throw new Error("callMethod0 return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1561,7 +1630,7 @@ module RT {
             //TODO: readField is reading from m, which means stateful toString on m might fail
             return callFunction1(readField(o, from, m), Any /* readField gives type Any */, arg1, argType1);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             //var sub = subtype(t1.result, Any, {});
             //if (!(sub.fst)) {
             throw new Error("callMethod1 return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1589,7 +1658,7 @@ module RT {
             //TODO: readField is reading from m, which means stateful toString on m might fail
             return callFunction2(readField(o, from, m), Any /* readField gives type Any */, arg1, arg2, argType1, argType2);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             //var sub = subtype(t1.result, Any, {});
             //if (!(sub.fst)) {
             throw new Error("callMethod2 return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1633,7 +1702,7 @@ module RT {
             //TODO: readField is reading from m, which means stateful toString on m might fail
             return callFunction3(readField(o, from, m), Any /* readField gives type Any */, arg1, arg2, arg3, argType1, argType2, argType3);
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             //var sub = subtype(t1.result, Any, {});
             //if (!(sub.fst)) {
             throw new Error("callMethod3 return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1703,12 +1772,11 @@ module RT {
         }
 
         //var undotted_t_o = t_o.tt === TT.JUST_TYPE ? (<JustType> t_o).base : t_o; // first strip dot from static type
-        var rtti = o.__rtti__ || getTag(o);
-        var t1 = (rtti && rtti.methodTable["<call>"]) || t_o.methodTable["<call>"];
+        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
         //var sub = subtype(t1.result, Any, {});
         //if (!(sub.fst)) {
             throw new Error("callFunction return type is not a subtype of any: " + prettyprint_t(t1.result));
@@ -1766,13 +1834,12 @@ module RT {
         if (!o && (o === null || o === undefined)) {
             throw new Error("callFunction0 calling from undefined/null");
         }
-	
-	var t1 = o.__rtti__ || getTag(o);
-        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
+
+        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction0 <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("callFunction0 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1787,12 +1854,11 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-	var t1 = o.__rtti__ || getTag(o);
-        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
+        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("callFunction1 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1816,12 +1882,11 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-	var t1 = o.__rtti__ || getTag(o);
-        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
+        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("callFunction1 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1861,12 +1926,11 @@ module RT {
             throw new Error("callFunction0 calling from undefined/null");
         }
 
-	var t1 = o.__rtti__ || getTag(o);
-        t1 = (t1 && t1.methodTable["<call>"]) || t_o.methodTable["<call>"];
+        var t1 = (o.__rtti__ && o.__rtti__.methodTable["<call>"]) || t_o.methodTable["<call>"];
         if (t1 === undefined) {
             throw new Error("callFunction1 <call> method not found");
         }
-        if (t1.result.tt === TT.JUST_TYPE) {
+        if (t1.result.tt === TT.JUST_TYPE || t1.result.tt === TT.UN) {
             throw new Error("callFunction1 return type is not a subtype of any: " + prettyprint_t(t1.result));
         }
         // check args
@@ -1929,7 +1993,7 @@ module RT {
             throw new Error("assignmentWithUnaryOp on null/undefined/0");
         }
 
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         var tt = t_o.tt;
         var t = tt === TT.ANY ? from : t_o;
 
@@ -2004,7 +2068,7 @@ module RT {
             throw new Error("assignmentWithUnaryOp on null/undefined/0");
         }
 
-        var t_o = o.__rtti__ || getTag(o) || Any;
+        var t_o = o.__rtti__ || Any;
         var tt = t_o.tt;
         var t = tt === TT.ANY ? from : t_o;
         var t1: RTTI;
@@ -2058,7 +2122,7 @@ module RT {
         if (op === "AddAssignmentExpression") {
             var val: any = o[fname] + v;
             if (t1 === Num) {
-                if ((val.__rtti__ || getTag(val)) !== Num) {
+                if (val.__rtti__ !== Num) {
                     throw new Error("assignmentWithOp add error, expected a number");
                 } else {
                     return (o[fname] = val);
@@ -2100,8 +2164,277 @@ module RT {
         }
     }
 
-    export function setTag(v: WithRTTI, t: RTTI): WithRTTI {
-        setRtti(v, t);
+    export function setTag<T>(v: T, t: RTTI): T {
+        (<any> v).__rtti__ = t;
         return v;
+    }
+
+    // ------------------- Un functions ---------------------- //
+    declare var require: (m: string) => any;
+    var WeakMap = require('weak-map');
+
+    interface seenValue {
+        at_type: RTTI;
+        mapped_to: any;
+    }
+
+    function callUn1(un_f: any, un_arg1: any): any {
+        var stub = function(b: boolean) {
+            if (b) {
+                return stub(false);
+            } else {
+                return un_f(un_arg1);
+            }
+        }
+        return stub(true);
+    }
+
+    var upArrow1 = function (arg1: RTTI, ret: RTTI, seen: any) {
+        var down_arg = wrapFrom(arg1, seen);
+        var up_ret = wrapTo(ret, seen);
+        return function (un_f: any) {
+            return function (safe_x: WithRTTI) {
+                return up_ret(callUn1(un_f, down_arg(safe_x)));
+            }
+        }
+    }
+
+    var downArrow1 = function (arg: RTTI, ret: RTTI, seen: any) {
+        var up_arg = wrapTo(arg, seen);
+        var down_ret = wrapFrom(ret, seen);
+        return function (safe_f: WithRTTI) {
+            return function (un_x: any) {
+                return down_ret((<any> safe_f)(up_arg(un_x)));
+            }
+        }
+    }
+
+    var upString = function (un_x: any): WithRTTI {
+        return callUn1(function () { return un_x + ""; }, undefined);
+    }
+
+    var downString = function (x: WithRTTI): any {
+        return x;
+    }
+
+    var upNumber = function (un_x: any): WithRTTI {
+        return callUn1(function () { return +un_x; }, undefined);
+    }
+
+    var downNumber = downString;
+
+    var upBoolean = function (un_x: any): WithRTTI {
+        return callUn1(function () { if (un_x) return true; else return false; }, undefined);
+    }
+
+    var downBoolean = downString;
+
+    var upVoid = function (un_x: any): WithRTTI {
+        // TODO: check un_x === undefined ?
+        return undefined;
+    }
+
+    var downVoid = function (safe_x: WithRTTI): any {
+        return undefined;
+    }
+    
+    //TODO: up and down structure should copy fields outside type ?
+    var upStructure = function (t: StructuredType, seen: any) {
+        return function (un_x: any) {
+            if (un_x === undefined) {
+                return undefined;
+            }
+            var seen_val: seenValue = seen.get(un_x); //TODO: assumption that weakmap doesn't dereference un_x
+            if (seen_val) {
+                if(equalTypes(seen_val.at_type, t, {})) {
+                    return seen_val.mapped_to;
+                } else {
+                    throw new Error("seen value at a different type");
+                }
+            }
+            var fn_type = t.methodTable["<call>"];
+            var r: WithRTTI;
+            if (fn_type) {
+                assert(fn_type.args.length === 1 && fn_type.varargs === undefined, "");
+                r = upArrow1(fn_type.args[0], fn_type.result, seen)(un_x);
+            } else {
+                assert(Object.keys(t.methodTable).length === 0, "");
+                r = {};
+            }
+
+            seen.set(un_x, { at_type: t, mapped_to: r });
+            var fields = t.fieldTable;
+            for (var f in fields) {
+                callUn1(function () {
+                    r[f] = wrapTo(fields[f])(un_x[f]);
+                }, undefined);
+            }
+            return r;
+        }
+    }
+
+    var downStructure = function (t: StructuredType, seen: any) {
+        return function (safe_x: WithRTTI) {
+            if (safe_x === undefined) {
+                return undefined;
+            }
+            var seen_value: seenValue = seen.get(safe_x);
+            if (seen_value) {
+                return seen_value.mapped_to; //TODO: here need not check for type equality ?
+            }
+            var fn_type = t.methodTable["<call>"];
+            var r: any;
+            if (fn_type) {
+                assert(fn_type.args.length === 1 && fn_type.varargs === undefined, "");
+                r = downArrow1(fn_type.args[0], fn_type.result, seen)(safe_x);
+            } else {
+                assert(Object.keys(t.methodTable).length === 0, "");
+                r = {};
+            }
+
+            seen.set(safe_x, { at_type: t, mapped_to: r });
+            var fields = t.fieldTable;
+            for (var f in fields) {
+                r[f] = wrapFrom(fields[f])(safe_x[f]);
+            }
+            return r;
+        }
+    }
+
+    var upArray = function (t: ArrayType, seen: any): (un_x: any) => WithRTTI {
+        return function (un_x: any) {
+            if (un_x === undefined) {
+                return undefined;
+            }
+            var a = <any> [];
+            var wrapper = wrapTo(t.elt, seen);
+            callUn1(function () {
+                var len = un_x.length;
+                for (var i = 0; i < len; ++i) {
+                    a[len] = wrapper(un_x[i]);
+                }
+            }, undefined);
+            return a;
+        }
+    }
+
+    var downArray = function (t: ArrayType, seen: any) {
+        return function (safe_x: WithRTTI) {
+            if (safe_x === undefined) {
+                return undefined;
+            }
+            var a = <any> [];
+            var wrapper = wrapFrom(t.elt, seen);
+            var len = (<any> safe_x).length;
+            for (var i = 0; i < len; ++i) {
+                a[i] = wrapper(safe_x[i]);
+            }
+            return a;
+        }
+    }
+
+    var upJust = function (t: JustType, seen: any) {
+        return wrapTo(t.base, seen);
+    }
+
+    var downJust = function (t: JustType, seen: any) {
+        return wrapFrom(t.base, seen);
+    }
+
+    var upInterface = function (t: InterfaceType, seen: any) {
+        return wrapTo(t.structuredType, seen);
+    }
+
+    var downInterface = function (t: InterfaceType, seen: any) {
+        return wrapFrom(t.structuredType, seen);
+    }
+
+    var upIndexMap = function (t: IndexMapType, seen: any) {
+        return function (un_x: any) {
+            var r = {};
+            callUn1(function () {
+                for (var f in un_x) {
+                    r[<any> (wrapTo(t.key, seen)(f))] = wrapTo(t.value, seen)(un_x[f]);
+                }
+            }, undefined);
+            return r;
+        }
+    }
+
+    var downIndexMap = function (t: IndexMapType, seen: any) {
+        return function (safe_x: WithRTTI) {
+            var r = {};
+            for (var f in safe_x) {
+                r[<any> (wrapFrom(t.key, seen)(f))] = wrapFrom(t.value, seen)(safe_x[f]);
+            }
+            return r;
+        }
+    }
+
+
+    var wrapTo = function (t: RTTI, seen: any): (x: any) => WithRTTI {
+        switch (t.tt) {
+            case TT.CLASS:
+            case TT.INSTANCE:
+            case TT.ANY:
+                assert(false, "");
+            case TT.INDEX_MAP:
+                return upIndexMap(<IndexMapType> t, seen);
+            case TT.INTERFACE:
+                return upInterface(<InterfaceType> t, seen)
+            case TT.ARRAY:
+                return upArray(<ArrayType> t, seen);
+            case TT.BOOLEAN:
+                return upBoolean;
+            case TT.JUST_TYPE:
+                return upJust(<JustType> t, seen);
+            case TT.NUMBER:
+                return upNumber;
+            case TT.STRING:
+                return upString;
+            case TT.STRUCTURED_TYPE:
+                return upStructure(<StructuredType> t, seen);
+            case TT.UN:
+                return function (x) { return x; }
+            case TT.VOID:
+                return upVoid;
+        }
+    }
+
+    var wrapFrom = function (t: RTTI, seen: any): (x: WithRTTI) => any {
+        switch (t.tt) {
+            case TT.CLASS:
+            case TT.INSTANCE:
+            case TT.ANY:
+                assert(false, "");
+            case TT.INDEX_MAP:
+                return downIndexMap(<IndexMapType> t, seen);
+            case TT.INTERFACE:
+                return downInterface(<InterfaceType> t, seen);
+            case TT.ARRAY:
+                return downArray(<ArrayType> t, seen);
+            case TT.BOOLEAN:
+                return downBoolean;
+            case TT.JUST_TYPE:
+                return downJust(<JustType> t, seen);
+            case TT.NUMBER:
+                return downNumber;
+            case TT.STRING:
+                return downString;
+            case TT.STRUCTURED_TYPE:
+                return downStructure(<StructuredType> t, seen);
+            case TT.UN:
+                return function (x) { return x; }
+            case TT.VOID:
+                return downVoid;
+        }
+    }
+
+    export var wrapToUn = function (x: WithRTTI, t: RTTI): any {
+        return wrapFrom(t, new WeakMap())(x);
+    }
+
+    export var wrapFromUn = function (x: any, t: RTTI): WithRTTI {
+        return wrapTo(t, new WeakMap())(x);
     }
 }

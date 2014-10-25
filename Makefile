@@ -48,7 +48,7 @@ CONFIGS=safe opt weak tsstar
 ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES)
 
 allconfigs: $(CONFIGS)
-benchall: $(CONFIGS) $(addsuffix .boot, $(CONFIGS))
+benchall: $(CONFIGS) $(addsuffix .boot, $(CONFIGS)) newts $(addsuffix .newts, $(CONFIGS))
 
 processbm: processbm.js
 	make benchall
@@ -58,65 +58,53 @@ processbm: processbm.js
 processbm.js: processbm.ts
 	node ./bin/tsc.js --module commonjs $^
 
+TIME=time -p
+
 # node-inspeXFctor --web-port=8081 & 
 safe: built/local/lib.d.ts stdrt
-	time node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js > dump.$@ 2>&1
+	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
 
 opt: built/local/lib.d.ts stdrt
-	time node $(PROFILE) built/local/tsc.js --optimizePure $(ARGS) -out built/local/tsc.$@.js > dump.$@ 2>&1
+	($(TIME) node $(PROFILE) built/local/tsc.js --optimizePure $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
 
 weak: built/local/lib.d.ts weakrt
-	time node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js > dump.$@ 2>&1
+	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
 
 tsstar: built/local/lib.d.ts stdrt
-	time node $(PROFILE) built/local/tsc.js --tsstarTagging $(ARGS) -out built/local/tsc.$@.js > dump.$@ 2>&1
+	($(TIME) node $(PROFILE) built/local/tsc.js --tsstarTagging $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
 
 %.boot: built/local/tsc.%.js
-	time node $^ $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc.boot.$*.js > dump.$*.boot 2>&1
+	($(TIME) node $^ $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc.boot.$*.js) &> dump.$*.boot
 
 
 clean: 
 	rm -f $(addprefix built/local/tsc., $(addsuffix .js, $(CONFIGS)))
 	rm -f $(addprefix built/local/tsc.boot., $(addsuffix .js, $(CONFIGS)))
-	rm -f dump* processbm.js data.html bootstrap.html
-
-# boot.weak.safer: built/local/lib.d.ts weakrt
-# 	node $(PROFILE) built/local/tsc-weak.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc-weak-safer.js > dump 2>&1
-
-
-# boot.safer: built/local/lib.d.ts stdrt
-# 	node $(PROFILE) built/local/tsc-safe.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc-safer.js > dump 2>&1
-
-# boot.safer.tsstar: built/local/lib.d.ts stdrt
-# 	node $(PROFILE) built/local/tsc-safe-tsstar.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc-safer.js > dump 2>&1
-
-
-# boot.safer.safer: built/local/lib.d.ts stdrt
-# 	node $(PROFILE) built/local/tsc-safer.js $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc-safer.js > dump 2>&1
-
-# checksafe: boot
-# 	cat dump
-
-# wc: 
-# 	wc -l $(SOURCEFILES) src/compiler/core/environment.ts src/compiler/io.ts built/local/lib.d.ts src/compiler/typecheck/sound/rt.ts src/compiler/typecheck/sound/rtapi.ts
-
+	rm -f dump* processbm.js data.html newtsdata.html bootstrap.html
 
 # # new compiler
 
-# NEW_PREFIX=NewTypeScript/
+NEW_PREFIX=samples/SafeTypeScript/ts-v1.1/
 
-# NEW_SOURCEFILES=src/compiler/core.ts src/compiler/sys.ts src/compiler/types.ts src/compiler/scanner.ts src/compiler/parser.ts src/compiler/binder.ts src/compiler/checker.ts src/compiler/emitter.ts src/compiler/commandLineParser.ts src/compiler/tc.ts src/compiler/diagnosticInformationMap.generated.ts
+NEW_SOURCEFILES=src/compiler/core.ts src/compiler/sys.ts src/compiler/types.ts src/compiler/scanner.ts src/compiler/parser.ts src/compiler/binder.ts src/compiler/checker.ts src/compiler/emitter.ts src/compiler/commandLineParser.ts src/compiler/tc.ts src/compiler/diagnosticInformationMap.generated.ts
 
-# NEW_ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(addprefix $(NEW_PREFIX), $(NEW_SOURCEFILES))
+NEW_ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(addprefix $(NEW_PREFIX), $(NEW_SOURCEFILES))
 
-# newts: built/local/lib.d.ts stdrt
-# 	cp src/compiler/typecheck/sound/rtapi.ts $(NEW_PREFIX)/src/compiler
-# 	cp src/compiler/typecheck/sound/rt.ts $(NEW_PREFIX)/src/compiler
-# 	time node $(PROFILE) built/local/tsc.js $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/safets.js > dump.$@ 2>&1
+newrt:
+	cp src/compiler/typecheck/sound/rtnew.ts bin/rt.ts
+	cp src/compiler/typecheck/sound/rtnewapi.ts $(NEW_PREFIX)/src/compiler/rtapi.ts
+	cp src/compiler/typecheck/sound/rtnew.ts $(NEW_PREFIX)/src/compiler/rt.ts
+
+newts: built/local/tsc.js built/local/lib.d.ts newrt
+	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.js) &> dump.$@
+
+%.newts: built/local/tsc.%.js built/local/lib.d.ts newrt
+	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.$*.js) &> dump.$@
 
 # NEW_NEW_PREFIX=NewNewTypeScript/
 
-# NEW_NEW_ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(addprefix $(NEW_NEW_PREFIX), $(NEW_SOURCEFILES))
+# NEW_NEW_ARGS=$(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(addprefix $(NEW_NEW_PREFIX), $(NEW_SOURCEFI
+#LES))
 
 # newnewts: built/local/lib.d.ts stdrt
 # 	cp src/compiler/typecheck/sound/rtapi.ts $(NEW_NEW_PREFIX)/src/compiler

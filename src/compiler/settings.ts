@@ -117,7 +117,7 @@ module TypeScript {
         public matchedOrAlmost: KnownWarning[] = [];
         public shouldInstrument(fn: string) {
             var sn = fn.substring(fn.lastIndexOf("/") + 1);
-            if (sn === "lib.d.ts" || sn === "rt.ts" || sn === "rtapi.ts") {
+            if (sn === "lib.d.ts" || sn === "rt.ts" || sn === "rtapi.ts" || sn === "core.ts") {
                 return false;
             }
             return !this._noInstrs.some((f) => fn.substr(fn.length - f.length)  === f);
