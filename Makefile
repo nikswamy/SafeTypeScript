@@ -62,19 +62,19 @@ TIME=time -p
 
 # node-inspeXFctor --web-port=8081 & 
 safe: built/local/lib.d.ts stdrt
-	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
+	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) > dump.$@ 2>&1
 
 opt: built/local/lib.d.ts stdrt
-	($(TIME) node $(PROFILE) built/local/tsc.js --optimizePure $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
+	($(TIME) node $(PROFILE) built/local/tsc.js --optimizePure $(ARGS) -out built/local/tsc.$@.js) > dump.$@ 2>&1
 
 weak: built/local/lib.d.ts weakrt
-	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
+	($(TIME) node $(PROFILE) built/local/tsc.js $(ARGS) -out built/local/tsc.$@.js) > dump.$@ 2>&1
 
 tsstar: built/local/lib.d.ts stdrt
-	($(TIME) node $(PROFILE) built/local/tsc.js --tsstarTagging $(ARGS) -out built/local/tsc.$@.js) &> dump.$@
+	($(TIME) node $(PROFILE) built/local/tsc.js --tsstarTagging $(ARGS) -out built/local/tsc.$@.js) > dump.$@ 2>&1
 
 %.boot: built/local/tsc.%.js
-	($(TIME) node $^ $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc.boot.$*.js) &> dump.$*.boot
+	($(TIME) node $^ $(OTHERFLAGS) $(SAFEMODE_FLAGS) --removeComments -propagateEnumConstants -t ES5 -noImplicitAny --module commonjs $(SOURCEFILES) -out built/local/tsc.boot.$*.js) > dump.$*.boot 2>&1
 
 
 clean: 
@@ -96,10 +96,10 @@ newrt:
 	cp src/compiler/typecheck/sound/rtnew.ts $(NEW_PREFIX)/src/compiler/rt.ts
 
 newts: built/local/tsc.js built/local/lib.d.ts newrt
-	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.js) &> dump.$@
+	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.js) > dump.$@ 2>&1
 
 %.newts: built/local/tsc.%.js built/local/lib.d.ts newrt
-	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.$*.js) &> dump.$@
+	($(TIME) node $(PROFILE) $< $(NEW_ARGS) -out $(NEW_PREFIX)/built/local/tsc.$*.js) > dump.$@ 2>&1
 
 # NEW_NEW_PREFIX=NewNewTypeScript/
 
